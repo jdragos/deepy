@@ -1,16 +1,32 @@
+#define SERVO_ROTATE_CLAW_PIN 15
+Servo ServoRotateClaw;
+int servoRotateClawAngle = 90;
+const int servoRotateClawStep = 2;
+const int servoRotateClawMin = 0;
+const int servoRotateClawMax = 180;
+unsigned long lastClawUpdate = 0;
+const int servoRotateClawDelay = 10;
 #define SERVO_PIVOT2_R_PIN 32
 #define SERVO_PIVOT2_L_PIN 33
+
+
 Servo ServoPivot2R;
 Servo ServoPivot2L;
+
+
 int servoPivot2Angle = 180;
 int servoPivot2Target = 180;
 unsigned long lastServo2Update = 0;
 const int servo2Step = 2;
 const int servo2Delay = 10;
+
+
 // Double tap logic
 unsigned long lastSquarePress = 0;
 unsigned long lastCirclePress = 0;
 const unsigned long doubleTapWindow = 350; // ms
+
+
 #include <Arduino.h>
 #include <PS4Controller.h>
 #include <Wire.h>
@@ -21,8 +37,12 @@ const unsigned long doubleTapWindow = 350; // ms
 // Servo-uri pivot
 #define SERVO_PIVOT_R_PIN 25
 #define SERVO_PIVOT_L_PIN 26
+
+
 Servo ServoPivot1R;
 Servo ServoPivot1L;
+
+
 int servoPivotAngle = 180; // poziția curentă (0-180)
 int servoPivotTarget = 180; // ținta spre care se duce lent
 unsigned long lastServoUpdate = 0;
@@ -53,6 +73,13 @@ const int pwmFreq = 1000;
 const int pwmResolution = 8;
 
 void setup() {
+  // Atașează servo-ul de rotație clește și îl poziționează la 90° (orizontal)
+  ServoRotateClaw.attach(SERVO_ROTATE_CLAW_PIN);
+  servoRotateClawAngle = 90;
+  ServoRotateClaw.write(servoRotateClawAngle);
+  delay(300);
+
+
   // Atașează servo-urile pivot 2 și le poziționează la 180° (perpendicular cu solul)
   ServoPivot2R.attach(SERVO_PIVOT2_R_PIN);
   ServoPivot2L.attach(SERVO_PIVOT2_L_PIN);
@@ -61,6 +88,8 @@ void setup() {
   servoPivot2Angle = 180;
   servoPivot2Target = 180;
   delay(500);
+
+
   // Atașează servo-urile pivot și le poziționează la 180° (maxim jos)
   ServoPivot1R.attach(SERVO_PIVOT_R_PIN);
   ServoPivot1L.attach(SERVO_PIVOT_L_PIN);
@@ -113,11 +142,28 @@ void setup() {
 }
 
 void loop() {
+  // Control ServoRotateClaw cu L2 (stânga) și R2 (dreapta)
+  bool l2 = PS4.L2();
+  bool r2 = PS4.R2();
+  unsigned long now = millis();
+  if (l2 && !r2 && servoRotateClawAngle > servoRotateClawMin && now - lastClawUpdate > servoRotateClawDelay) {
+    servoRotateClawAngle = max(servoRotateClawAngle - servoRotateClawStep, servoRotateClawMin);
+    ServoRotateClaw.write(servoRotateClawAngle);
+    lastClawUpdate = now;
+  } else if (r2 && !l2 && servoRotateClawAngle < servoRotateClawMax && now - lastClawUpdate > servoRotateClawDelay) {
+    servoRotateClawAngle = min(servoRotateClawAngle + servoRotateClawStep, servoRotateClawMax);
+    ServoRotateClaw.write(servoRotateClawAngle);
+    lastClawUpdate = now;
+  }
+
+
   // Control servo-uri pivot 2 cu butoane și double tap
   static bool squareLast = false, circleLast = false;
   bool squareNow = PS4.Square();
   bool circleNow = PS4.Circle();
   unsigned long now = millis();
+
+
   // Double tap pe Square
   if (squareNow && !squareLast) {
     if (now - lastSquarePress < doubleTapWindow) {
@@ -128,6 +174,8 @@ void loop() {
     }
     lastSquarePress = now;
   }
+
+
   // Double tap pe Circle
   if (circleNow && !circleLast) {
     if (now - lastCirclePress < doubleTapWindow) {
@@ -138,12 +186,16 @@ void loop() {
     }
     lastCirclePress = now;
   }
+
+
   // Apăsare simplă: mișcare lentă
   if (squareNow && !circleNow) {
     servoPivot2Target = 0;
   } else if (circleNow && !squareNow) {
     servoPivot2Target = 180;
   }
+
+
   // Mișcare lentă spre țintă (dacă nu e shortcut)
   if (!(squareNow && (now - lastSquarePress < doubleTapWindow)) && !(circleNow && (now - lastCirclePress < doubleTapWindow))) {
     if (now - lastServo2Update > servo2Delay) {
@@ -159,6 +211,8 @@ void loop() {
   }
   squareLast = squareNow;
   circleLast = circleNow;
+
+
   // Shortcut rapid: săgeată dreapta = 180°, săgeată stânga = 90°
   if (PS4.Right()) {
     servoPivotAngle = 180;
@@ -171,12 +225,16 @@ void loop() {
   ServoPivot1L.write(servoPivotAngle);
   ServoPivot1R.write(180 - servoPivotAngle);
   }
+
+
   // Mișcare lentă/precisă cu X/Triunghi
   else if (PS4.Triangle()) {
     servoPivotTarget = 180;
   } else if (PS4.Cross()) {
     servoPivotTarget = 0;
   }
+
+
   // Mișcare lentă spre țintă (doar dacă nu e shortcut)
   if (!PS4.Right() && !PS4.Left()) {
     unsigned long now = millis();
@@ -191,34 +249,42 @@ void loop() {
       lastServoUpdate = now;
     }
   }
+
+
   // Citim datele de la stick-uri
   int lX = PS4.LStickX(); // -128 ... 127 (stanga/dreapta)
   int lY = PS4.LStickY(); // -128 ... 127 (fata/spate)
   int rY = PS4.RStickY(); // -128 ... 127 (motor suplimentar)
 
+
   // Control sasiu ca un volan (fata/spate + stanga/dreapta proportional)
   int v = map(lY, -128, 127, -255, 255); // viteza fata/spate
   int w = map(lX, -128, 127, -255, 255); // rotatie stanga/dreapta
 
+  
   // Algoritm tip "diferential drive" pentru volan
   motor1Speed = constrain(v + w, -255, 255); // stanga fata
   motor2Speed = constrain(v - w, -255, 255); // dreapta fata
   motor3Speed = constrain(v + w, -255, 255); // stanga spate
   motor4Speed = constrain(v - w, -255, 255); // dreapta spate
 
+  
   // Control motor suplimentar cu joystick dreapta (sus = dreapta, jos = stanga)
   motor5Speed = map(rY, -128, 127, -255, 255); // -255 = stanga, 255 = dreapta
   motor5Speed = constrain(motor5Speed, -255, 255);
 
+  
   // Comenzi PWM pentru motoare sasiu
   ledcWrite(0, motor1Speed > 0 ? motor1Speed : 0);
   ledcWrite(1, motor1Speed < 0 ? -motor1Speed : 0);
   ledcWrite(2, motor3Speed > 0 ? motor3Speed : 0);
   ledcWrite(3, motor3Speed < 0 ? -motor3Speed : 0);
 
+  
   // Comenzi PWM pentru motor suplimentar
   ledcWrite(4, motor5Speed > 0 ? motor5Speed : 0); // IN5
   ledcWrite(5, motor5Speed < 0 ? -motor5Speed : 0); // IN6
+
 
   delay(20);
 }
