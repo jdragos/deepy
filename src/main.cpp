@@ -1,8 +1,23 @@
+#define SERVO_PIVOT2_R_PIN 32
+#define SERVO_PIVOT2_L_PIN 33
+Servo ServoPivot2R;
+Servo ServoPivot2L;
+int servoPivot2Angle = 180;
+int servoPivot2Target = 180;
+unsigned long lastServo2Update = 0;
+const int servo2Step = 2;
+const int servo2Delay = 10;
+// Double tap logic
+unsigned long lastSquarePress = 0;
+unsigned long lastCirclePress = 0;
+const unsigned long doubleTapWindow = 350; // ms
 #include <Arduino.h>
 #include <PS4Controller.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <ESP32Servo.h>
+
+
 // Servo-uri pivot
 #define SERVO_PIVOT_R_PIN 25
 #define SERVO_PIVOT_L_PIN 26
@@ -38,11 +53,19 @@ const int pwmFreq = 1000;
 const int pwmResolution = 8;
 
 void setup() {
+  // Atașează servo-urile pivot 2 și le poziționează la 180° (perpendicular cu solul)
+  ServoPivot2R.attach(SERVO_PIVOT2_R_PIN);
+  ServoPivot2L.attach(SERVO_PIVOT2_L_PIN);
+  ServoPivot2L.write(180);
+  ServoPivot2R.write(0);
+  servoPivot2Angle = 180;
+  servoPivot2Target = 180;
+  delay(500);
   // Atașează servo-urile pivot și le poziționează la 180° (maxim jos)
   ServoPivot1R.attach(SERVO_PIVOT_R_PIN);
   ServoPivot1L.attach(SERVO_PIVOT_L_PIN);
-  ServoPivot1R.write(180);
-  ServoPivot1L.write(0);
+  ServoPivot1L.write(180);
+  ServoPivot1R.write(0);
   servoPivotAngle = 180;
   delay(500);
   Serial.begin(115200);
@@ -90,17 +113,63 @@ void setup() {
 }
 
 void loop() {
+  // Control servo-uri pivot 2 cu butoane și double tap
+  static bool squareLast = false, circleLast = false;
+  bool squareNow = PS4.Square();
+  bool circleNow = PS4.Circle();
+  unsigned long now = millis();
+  // Double tap pe Square
+  if (squareNow && !squareLast) {
+    if (now - lastSquarePress < doubleTapWindow) {
+      servoPivot2Angle = 90;
+      servoPivot2Target = 90;
+      ServoPivot2L.write(servoPivot2Angle);
+      ServoPivot2R.write(180 - servoPivot2Angle);
+    }
+    lastSquarePress = now;
+  }
+  // Double tap pe Circle
+  if (circleNow && !circleLast) {
+    if (now - lastCirclePress < doubleTapWindow) {
+      servoPivot2Angle = 180;
+      servoPivot2Target = 180;
+  ServoPivot2L.write(servoPivot2Angle);
+  ServoPivot2R.write(180 - servoPivot2Angle);
+    }
+    lastCirclePress = now;
+  }
+  // Apăsare simplă: mișcare lentă
+  if (squareNow && !circleNow) {
+    servoPivot2Target = 0;
+  } else if (circleNow && !squareNow) {
+    servoPivot2Target = 180;
+  }
+  // Mișcare lentă spre țintă (dacă nu e shortcut)
+  if (!(squareNow && (now - lastSquarePress < doubleTapWindow)) && !(circleNow && (now - lastCirclePress < doubleTapWindow))) {
+    if (now - lastServo2Update > servo2Delay) {
+      if (servoPivot2Angle < servoPivot2Target) {
+        servoPivot2Angle = min(servoPivot2Angle + servo2Step, servoPivot2Target);
+      } else if (servoPivot2Angle > servoPivot2Target) {
+        servoPivot2Angle = max(servoPivot2Angle - servo2Step, servoPivot2Target);
+      }
+  ServoPivot2L.write(servoPivot2Angle);
+  ServoPivot2R.write(180 - servoPivot2Angle);
+      lastServo2Update = now;
+    }
+  }
+  squareLast = squareNow;
+  circleLast = circleNow;
   // Shortcut rapid: săgeată dreapta = 180°, săgeată stânga = 90°
   if (PS4.Right()) {
     servoPivotAngle = 180;
     servoPivotTarget = 180;
-    ServoPivot1R.write(servoPivotAngle);
-    ServoPivot1L.write(180 - servoPivotAngle);
+  ServoPivot1L.write(servoPivotAngle);
+  ServoPivot1R.write(180 - servoPivotAngle);
   } else if (PS4.Left()) {
     servoPivotAngle = 90;
     servoPivotTarget = 90;
-    ServoPivot1R.write(servoPivotAngle);
-    ServoPivot1L.write(180 - servoPivotAngle);
+  ServoPivot1L.write(servoPivotAngle);
+  ServoPivot1R.write(180 - servoPivotAngle);
   }
   // Mișcare lentă/precisă cu X/Triunghi
   else if (PS4.Triangle()) {
@@ -117,8 +186,8 @@ void loop() {
       } else if (servoPivotAngle > servoPivotTarget) {
         servoPivotAngle = max(servoPivotAngle - servoStep, servoPivotTarget);
       }
-      ServoPivot1R.write(servoPivotAngle);
-      ServoPivot1L.write(180 - servoPivotAngle);
+  ServoPivot1L.write(servoPivotAngle);
+  ServoPivot1R.write(180 - servoPivotAngle);
       lastServoUpdate = now;
     }
   }
