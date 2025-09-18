@@ -2,6 +2,17 @@
 #include <PS4Controller.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
+#include <ESP32Servo.h>
+// Servo-uri pivot
+#define SERVO_PIVOT_R_PIN 25
+#define SERVO_PIVOT_L_PIN 26
+Servo ServoPivot1R;
+Servo ServoPivot1L;
+int servoPivotAngle = 180; // poziția curentă (0-180)
+int servoPivotTarget = 180; // ținta spre care se duce lent
+unsigned long lastServoUpdate = 0;
+const int servoStep = 2; // pas de mișcare lentă
+const int servoDelay = 10; // ms între pași
 
 // PCA9685 pentru 6 servo-uri
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
@@ -27,6 +38,13 @@ const int pwmFreq = 1000;
 const int pwmResolution = 8;
 
 void setup() {
+  // Atașează servo-urile pivot și le poziționează la 180° (maxim jos)
+  ServoPivot1R.attach(SERVO_PIVOT_R_PIN);
+  ServoPivot1L.attach(SERVO_PIVOT_L_PIN);
+  ServoPivot1R.write(180);
+  ServoPivot1L.write(0);
+  servoPivotAngle = 180;
+  delay(500);
   Serial.begin(115200);
 
   // Inițializare PCA9685 și servo-uri la 180 de grade (stânga maxim)
@@ -72,6 +90,38 @@ void setup() {
 }
 
 void loop() {
+  // Shortcut rapid: săgeată dreapta = 180°, săgeată stânga = 90°
+  if (PS4.Right()) {
+    servoPivotAngle = 180;
+    servoPivotTarget = 180;
+    ServoPivot1R.write(servoPivotAngle);
+    ServoPivot1L.write(180 - servoPivotAngle);
+  } else if (PS4.Left()) {
+    servoPivotAngle = 90;
+    servoPivotTarget = 90;
+    ServoPivot1R.write(servoPivotAngle);
+    ServoPivot1L.write(180 - servoPivotAngle);
+  }
+  // Mișcare lentă/precisă cu X/Triunghi
+  else if (PS4.Triangle()) {
+    servoPivotTarget = 180;
+  } else if (PS4.Cross()) {
+    servoPivotTarget = 0;
+  }
+  // Mișcare lentă spre țintă (doar dacă nu e shortcut)
+  if (!PS4.Right() && !PS4.Left()) {
+    unsigned long now = millis();
+    if (now - lastServoUpdate > servoDelay) {
+      if (servoPivotAngle < servoPivotTarget) {
+        servoPivotAngle = min(servoPivotAngle + servoStep, servoPivotTarget);
+      } else if (servoPivotAngle > servoPivotTarget) {
+        servoPivotAngle = max(servoPivotAngle - servoStep, servoPivotTarget);
+      }
+      ServoPivot1R.write(servoPivotAngle);
+      ServoPivot1L.write(180 - servoPivotAngle);
+      lastServoUpdate = now;
+    }
+  }
   // Citim datele de la stick-uri
   int lX = PS4.LStickX(); // -128 ... 127 (stanga/dreapta)
   int lY = PS4.LStickY(); // -128 ... 127 (fata/spate)
