@@ -1,61 +1,42 @@
-#define SERVO_CLAW_PIN 13
-Servo ServoClaw;
-int servoClawAngle = 90;
-const int servoClawStep = 2;
-const int servoClawMin = 0;
-const int servoClawMax = 180;
-unsigned long lastClawOpenUpdate = 0;
-const int servoClawDelay = 10;
-#define SERVO_ROTATE_CLAW_PIN 15
-Servo ServoRotateClaw;
+
+#include <Arduino.h>
+#include <PS4Controller.h>
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+
+// Servo-uri pe PCA9685
+#define CH_PIVOT1L 0
+#define CH_PIVOT1R 1
+#define CH_PIVOT2L 2
+#define CH_PIVOT2R 3
+#define CH_ROTATE_CLAW 4
+#define CH_CLAW 5
+
+int servoPivotAngle = 180, servoPivotTarget = 180;
+unsigned long lastServoUpdate = 0;
+const int servoStep = 2;
+const int servoDelay = 10;
+
+int servoPivot2Angle = 180, servoPivot2Target = 180;
+unsigned long lastServo2Update = 0;
+const int servo2Step = 2;
+const int servo2Delay = 10;
+unsigned long lastSquarePress = 0, lastCirclePress = 0;
+const unsigned long doubleTapWindow = 350;
+
 int servoRotateClawAngle = 90;
 const int servoRotateClawStep = 2;
 const int servoRotateClawMin = 0;
 const int servoRotateClawMax = 180;
 unsigned long lastClawUpdate = 0;
 const int servoRotateClawDelay = 10;
-#define SERVO_PIVOT2_R_PIN 32
-#define SERVO_PIVOT2_L_PIN 33
 
-
-Servo ServoPivot2R;
-Servo ServoPivot2L;
-
-
-int servoPivot2Angle = 180;
-int servoPivot2Target = 180;
-unsigned long lastServo2Update = 0;
-const int servo2Step = 2;
-const int servo2Delay = 10;
-
-
-// Double tap logic
-unsigned long lastSquarePress = 0;
-unsigned long lastCirclePress = 0;
-const unsigned long doubleTapWindow = 350; // ms
-
-
-#include <Arduino.h>
-#include <PS4Controller.h>
-#include <Wire.h>
-#include <Adafruit_PWMServoDriver.h>
-#include <ESP32Servo.h>
-
-
-// Servo-uri pivot
-#define SERVO_PIVOT_R_PIN 25
-#define SERVO_PIVOT_L_PIN 26
-
-
-Servo ServoPivot1R;
-Servo ServoPivot1L;
-
-
-int servoPivotAngle = 180; // poziția curentă (0-180)
-int servoPivotTarget = 180; // ținta spre care se duce lent
-unsigned long lastServoUpdate = 0;
-const int servoStep = 2; // pas de mișcare lentă
-const int servoDelay = 10; // ms între pași
+int servoClawAngle = 90;
+const int servoClawStep = 2;
+const int servoClawMin = 0;
+const int servoClawMax = 180;
+unsigned long lastClawOpenUpdate = 0;
+const int servoClawDelay = 10;
 
 // PCA9685 pentru 6 servo-uri
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
@@ -81,34 +62,17 @@ const int pwmFreq = 1000;
 const int pwmResolution = 8;
 
 void setup() {
-  // Atașează servo-ul de deschidere/închidere clește și îl poziționează la 90° (mijloc)
-  ServoClaw.attach(SERVO_CLAW_PIN);
-  servoClawAngle = 90;
-  ServoClaw.write(servoClawAngle);
-  delay(300);
-  // Atașează servo-ul de rotație clește și îl poziționează la 90° (orizontal)
-  ServoRotateClaw.attach(SERVO_ROTATE_CLAW_PIN);
+  // Inițializează servo-urile pe PCA9685 la pozițiile de start
+  servoPivotAngle = servoPivotTarget = 180;
+  servoPivot2Angle = servoPivot2Target = 180;
   servoRotateClawAngle = 90;
-  ServoRotateClaw.write(servoRotateClawAngle);
-  delay(300);
-
-
-  // Atașează servo-urile pivot 2 și le poziționează la 180° (perpendicular cu solul)
-  ServoPivot2R.attach(SERVO_PIVOT2_R_PIN);
-  ServoPivot2L.attach(SERVO_PIVOT2_L_PIN);
-  ServoPivot2L.write(180);
-  ServoPivot2R.write(0);
-  servoPivot2Angle = 180;
-  servoPivot2Target = 180;
-  delay(500);
-
-
-  // Atașează servo-urile pivot și le poziționează la 180° (maxim jos)
-  ServoPivot1R.attach(SERVO_PIVOT_R_PIN);
-  ServoPivot1L.attach(SERVO_PIVOT_L_PIN);
-  ServoPivot1L.write(180);
-  ServoPivot1R.write(0);
-  servoPivotAngle = 180;
+  servoClawAngle = 90;
+  pwm.setPWM(CH_PIVOT1L, 0, map(servoPivotAngle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_PIVOT1R, 0, map(180 - servoPivotAngle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_PIVOT2L, 0, map(servoPivot2Angle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_PIVOT2R, 0, map(180 - servoPivot2Angle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_ROTATE_CLAW, 0, map(servoRotateClawAngle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_CLAW, 0, map(servoClawAngle, 0, 180, SERVOMIN, SERVOMAX));
   delay(500);
   Serial.begin(115200);
 
@@ -161,11 +125,11 @@ void loop() {
   unsigned long now = millis();
   if (l1 && !r1 && servoClawAngle < servoClawMax && now - lastClawOpenUpdate > servoClawDelay) {
     servoClawAngle = min(servoClawAngle + servoClawStep, servoClawMax);
-    ServoClaw.write(servoClawAngle);
+    pwm.setPWM(CH_CLAW, 0, map(servoClawAngle, 0, 180, SERVOMIN, SERVOMAX));
     lastClawOpenUpdate = now;
   } else if (r1 && !l1 && servoClawAngle > servoClawMin && now - lastClawOpenUpdate > servoClawDelay) {
     servoClawAngle = max(servoClawAngle - servoClawStep, servoClawMin);
-    ServoClaw.write(servoClawAngle);
+    pwm.setPWM(CH_CLAW, 0, map(servoClawAngle, 0, 180, SERVOMIN, SERVOMAX));
     lastClawOpenUpdate = now;
   }
   // Control ServoRotateClaw cu L2 (stânga) și R2 (dreapta)
@@ -174,11 +138,11 @@ void loop() {
   unsigned long now = millis();
   if (l2 && !r2 && servoRotateClawAngle > servoRotateClawMin && now - lastClawUpdate > servoRotateClawDelay) {
     servoRotateClawAngle = max(servoRotateClawAngle - servoRotateClawStep, servoRotateClawMin);
-    ServoRotateClaw.write(servoRotateClawAngle);
+    pwm.setPWM(CH_ROTATE_CLAW, 0, map(servoRotateClawAngle, 0, 180, SERVOMIN, SERVOMAX));
     lastClawUpdate = now;
   } else if (r2 && !l2 && servoRotateClawAngle < servoRotateClawMax && now - lastClawUpdate > servoRotateClawDelay) {
     servoRotateClawAngle = min(servoRotateClawAngle + servoRotateClawStep, servoRotateClawMax);
-    ServoRotateClaw.write(servoRotateClawAngle);
+    pwm.setPWM(CH_ROTATE_CLAW, 0, map(servoRotateClawAngle, 0, 180, SERVOMIN, SERVOMAX));
     lastClawUpdate = now;
   }
 
@@ -195,8 +159,8 @@ void loop() {
     if (now - lastSquarePress < doubleTapWindow) {
       servoPivot2Angle = 90;
       servoPivot2Target = 90;
-      ServoPivot2L.write(servoPivot2Angle);
-      ServoPivot2R.write(180 - servoPivot2Angle);
+  pwm.setPWM(CH_PIVOT2L, 0, map(servoPivot2Angle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_PIVOT2R, 0, map(180 - servoPivot2Angle, 0, 180, SERVOMIN, SERVOMAX));
     }
     lastSquarePress = now;
   }
@@ -207,8 +171,8 @@ void loop() {
     if (now - lastCirclePress < doubleTapWindow) {
       servoPivot2Angle = 180;
       servoPivot2Target = 180;
-  ServoPivot2L.write(servoPivot2Angle);
-  ServoPivot2R.write(180 - servoPivot2Angle);
+  pwm.setPWM(CH_PIVOT2L, 0, map(servoPivot2Angle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_PIVOT2R, 0, map(180 - servoPivot2Angle, 0, 180, SERVOMIN, SERVOMAX));
     }
     lastCirclePress = now;
   }
@@ -230,8 +194,8 @@ void loop() {
       } else if (servoPivot2Angle > servoPivot2Target) {
         servoPivot2Angle = max(servoPivot2Angle - servo2Step, servoPivot2Target);
       }
-  ServoPivot2L.write(servoPivot2Angle);
-  ServoPivot2R.write(180 - servoPivot2Angle);
+  pwm.setPWM(CH_PIVOT2L, 0, map(servoPivot2Angle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_PIVOT2R, 0, map(180 - servoPivot2Angle, 0, 180, SERVOMIN, SERVOMAX));
       lastServo2Update = now;
     }
   }
@@ -243,13 +207,13 @@ void loop() {
   if (PS4.Right()) {
     servoPivotAngle = 180;
     servoPivotTarget = 180;
-  ServoPivot1L.write(servoPivotAngle);
-  ServoPivot1R.write(180 - servoPivotAngle);
+  pwm.setPWM(CH_PIVOT1L, 0, map(servoPivotAngle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_PIVOT1R, 0, map(180 - servoPivotAngle, 0, 180, SERVOMIN, SERVOMAX));
   } else if (PS4.Left()) {
     servoPivotAngle = 90;
     servoPivotTarget = 90;
-  ServoPivot1L.write(servoPivotAngle);
-  ServoPivot1R.write(180 - servoPivotAngle);
+  pwm.setPWM(CH_PIVOT1L, 0, map(servoPivotAngle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_PIVOT1R, 0, map(180 - servoPivotAngle, 0, 180, SERVOMIN, SERVOMAX));
   }
 
 
@@ -270,8 +234,8 @@ void loop() {
       } else if (servoPivotAngle > servoPivotTarget) {
         servoPivotAngle = max(servoPivotAngle - servoStep, servoPivotTarget);
       }
-  ServoPivot1L.write(servoPivotAngle);
-  ServoPivot1R.write(180 - servoPivotAngle);
+  pwm.setPWM(CH_PIVOT1L, 0, map(servoPivotAngle, 0, 180, SERVOMIN, SERVOMAX));
+  pwm.setPWM(CH_PIVOT1R, 0, map(180 - servoPivotAngle, 0, 180, SERVOMIN, SERVOMAX));
       lastServoUpdate = now;
     }
   }
