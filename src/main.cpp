@@ -80,5 +80,5 @@ void loop() {
   ledcWrite(2, motor3Speed > 0 ? motor3Speed : 0);
   ledcWrite(3, motor3Speed < 0 ? -motor3Speed : 0);
 
-  delay(20);
+  delay(30);
 }
