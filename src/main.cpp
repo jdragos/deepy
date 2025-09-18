@@ -1,3 +1,11 @@
+#define SERVO_CLAW_PIN 13
+Servo ServoClaw;
+int servoClawAngle = 90;
+const int servoClawStep = 2;
+const int servoClawMin = 0;
+const int servoClawMax = 180;
+unsigned long lastClawOpenUpdate = 0;
+const int servoClawDelay = 10;
 #define SERVO_ROTATE_CLAW_PIN 15
 Servo ServoRotateClaw;
 int servoRotateClawAngle = 90;
@@ -73,6 +81,11 @@ const int pwmFreq = 1000;
 const int pwmResolution = 8;
 
 void setup() {
+  // Atașează servo-ul de deschidere/închidere clește și îl poziționează la 90° (mijloc)
+  ServoClaw.attach(SERVO_CLAW_PIN);
+  servoClawAngle = 90;
+  ServoClaw.write(servoClawAngle);
+  delay(300);
   // Atașează servo-ul de rotație clește și îl poziționează la 90° (orizontal)
   ServoRotateClaw.attach(SERVO_ROTATE_CLAW_PIN);
   servoRotateClawAngle = 90;
@@ -142,6 +155,19 @@ void setup() {
 }
 
 void loop() {
+  // Control ServoClaw cu L1 (deschide) și R1 (închide)
+  bool l1 = PS4.L1();
+  bool r1 = PS4.R1();
+  unsigned long now = millis();
+  if (l1 && !r1 && servoClawAngle < servoClawMax && now - lastClawOpenUpdate > servoClawDelay) {
+    servoClawAngle = min(servoClawAngle + servoClawStep, servoClawMax);
+    ServoClaw.write(servoClawAngle);
+    lastClawOpenUpdate = now;
+  } else if (r1 && !l1 && servoClawAngle > servoClawMin && now - lastClawOpenUpdate > servoClawDelay) {
+    servoClawAngle = max(servoClawAngle - servoClawStep, servoClawMin);
+    ServoClaw.write(servoClawAngle);
+    lastClawOpenUpdate = now;
+  }
   // Control ServoRotateClaw cu L2 (stânga) și R2 (dreapta)
   bool l2 = PS4.L2();
   bool r2 = PS4.R2();
