@@ -1,5 +1,11 @@
 #include <Arduino.h>
 #include <PS4Controller.h>
+#include <ESP32Servo.h>
+// Servo MG995/MG996R
+#define SERVO1_PIN 25 // modifică dacă folosești alt pin
+#define SERVO2_PIN 26 // modifică dacă folosești alt pin
+Servo servo1;
+Servo servo2;
 
 #define IN1 16
 #define IN2 17
@@ -17,6 +23,13 @@ const int pwmResolution = 8;
 void setup() {
   Serial.begin(115200);
 
+  // Atașăm servo-urile și le poziționăm la 180 de grade (stânga maxim)
+  servo1.attach(SERVO1_PIN);
+  servo2.attach(SERVO2_PIN);
+  servo1.write(180);
+  servo2.write(180);
+  delay(500); // așteaptă să ajungă la poziție
+
   // Inițializăm pinii pentru L298N
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
@@ -33,6 +46,7 @@ void setup() {
   ledcAttachPin(IN2, 1);
   ledcAttachPin(IN3, 2);
   ledcAttachPin(IN4, 3);
+
 
   // Conectare PS4 controller
   if (!PS4.begin()) {
